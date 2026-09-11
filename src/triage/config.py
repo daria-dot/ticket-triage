@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
 
+    mlflow_tracking_uri: str = "http://localhost:5001"
+
     @property
     def target_repo_list(self) -> list[str]:
         return [repo.strip() for repo in self.target_repos.split(",") if repo.strip()]
