@@ -5,6 +5,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-triage}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-triage}
+    command: >
+      -c statement_timeout=${PG_STATEMENT_TIMEOUT_MS:-60000}
+      -c temp_file_limit=${PG_TEMP_FILE_LIMIT:-1GB}
     ports:
       - "5432:5432"
     volumes:
