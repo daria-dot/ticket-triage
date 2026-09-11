@@ -5,10 +5,9 @@ Trained on GitHub Issues with maintainer-applied labels as ground truth.
 
 **Status:** in development — Phase 1 (data ingestion) complete, Phase 2 (baseline model) next
 
-Training data comes from six actively-maintained repos with structured issue
+Training data comes from four actively-maintained repos with structured issue
 labels: `huggingface/transformers`, `pandas-dev/pandas`,
-`scikit-learn/scikit-learn`, `microsoft/vscode`, `kubernetes/kubernetes`,
-`rust-lang/rust`.
+`scikit-learn/scikit-learn`, `microsoft/vscode` (~495k issues/PRs total).
 
 ## Architecture
 
@@ -51,6 +50,13 @@ make ingest
   schedule, not as real continuous data accumulation. Requires an
   `INGEST_GITHUB_TOKEN` repo secret to be added manually (Settings → Secrets
   and variables → Actions) — not something committed to the repo.
+- **Dropped `kubernetes/kubernetes` and `rust-lang/rust` from the target list**,
+  against the spec's "5-6 large repos." Both turned out to be enormous
+  (`microsoft/vscode` alone came to 319k issues/PRs) on a laptop with very
+  little free disk headroom — continuing risked filling the disk. Four repos
+  at ~495k issues/PRs combined is still plenty of data for a baseline model;
+  can revisit the repo list once there's more headroom or a real database
+  (Phase 5) to write into.
 
 ## Not built, deliberately
 
