@@ -17,12 +17,24 @@ def last_seen_updated_at(engine: Engine, repo: str) -> str | None:
     return value
 
 
+def _strip_nul(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {key: _strip_nul(v) for key, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_nul(v) for v in value]
+    return value
+
+
 def _dump_payload(issue: dict[str, Any]) -> str:
     # Postgres's text type cannot store the NUL codepoint at all, in json/jsonb
     # or otherwise. A handful of issue bodies contain one (pasted binary /
-    # corrupted content) -- stripping just that escape sequence is forced by
-    # the database engine, not a content transformation.
-    return json.dumps(issue).replace("\\u0000", "")
+    # corrupted content) -- strip it from the actual string values before
+    # serializing, not from the encoded JSON text (a text-level replace risks
+    # matching an escaped backslash that happens to precede similar digits,
+    # corrupting otherwise-valid JSON).
+    return json.dumps(_strip_nul(issue))
 
 
 def upsert_issues(engine: Engine, repo: str, issues: list[dict[str, Any]]) -> None:
