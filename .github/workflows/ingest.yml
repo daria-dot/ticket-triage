@@ -36,7 +36,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN }}
       TARGET_REPOS: >-
         huggingface/transformers,pandas-dev/pandas,scikit-learn/scikit-learn,
-        microsoft/vscode,kubernetes/kubernetes,rust-lang/rust
+        microsoft/vscode
 
     steps:
       - uses: actions/checkout@v4
