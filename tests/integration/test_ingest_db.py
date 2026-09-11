@@ -58,3 +58,14 @@ def test_last_seen_updated_at_tracks_the_max(engine: Engine):
 
 def test_last_seen_updated_at_is_none_for_unknown_repo(engine: Engine):
     assert last_seen_updated_at(engine, "nobody/nothing") is None
+
+
+def test_upsert_strips_embedded_nul_bytes(engine: Engine):
+    # Postgres text/jsonb cannot store the NUL codepoint at all; some real issue bodies have one.
+    issue = {"number": 1, "updated_at": "2024-01-01T00:00:00Z", "body": "corrupted\x00paste"}
+    upsert_issues(engine, "owner/repo", [issue])
+
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT payload FROM raw_issues")).one()
+
+    assert row[0]["body"] == "corruptedpaste"

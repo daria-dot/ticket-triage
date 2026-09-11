@@ -17,6 +17,14 @@ def last_seen_updated_at(engine: Engine, repo: str) -> str | None:
     return value
 
 
+def _dump_payload(issue: dict[str, Any]) -> str:
+    # Postgres's text type cannot store the NUL codepoint at all, in json/jsonb
+    # or otherwise. A handful of issue bodies contain one (pasted binary /
+    # corrupted content) -- stripping just that escape sequence is forced by
+    # the database engine, not a content transformation.
+    return json.dumps(issue).replace("\\u0000", "")
+
+
 def upsert_issues(engine: Engine, repo: str, issues: list[dict[str, Any]]) -> None:
     if not issues:
         return
@@ -31,7 +39,7 @@ def upsert_issues(engine: Engine, repo: str, issues: list[dict[str, Any]]) -> No
                 """
             ),
             [
-                {"repo": repo, "issue_number": issue["number"], "payload": json.dumps(issue)}
+                {"repo": repo, "issue_number": issue["number"], "payload": _dump_payload(issue)}
                 for issue in issues
             ],
         )
