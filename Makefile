@@ -22,8 +22,11 @@ up:  ## Start local stack (Postgres, MLflow)
 down:  ## Stop local stack
 	docker compose down
 
-db-init:  ## Apply the DB schema (idempotent)
+db-init:  ## Apply the DB schema and feature views (idempotent)
 	docker compose exec -T postgres psql -U $${POSTGRES_USER:-triage} -d $${POSTGRES_DB:-triage} -f - < sql/schema.sql
+	docker compose exec -T postgres psql -U $${POSTGRES_USER:-triage} -d $${POSTGRES_DB:-triage} -f - < sql/views/issues_only.sql
+	docker compose exec -T postgres psql -U $${POSTGRES_USER:-triage} -d $${POSTGRES_DB:-triage} -f - < sql/views/label_category_map.sql
+	docker compose exec -T postgres psql -U $${POSTGRES_USER:-triage} -d $${POSTGRES_DB:-triage} -f - < sql/views/issue_categories.sql
 
 ingest: db-init  ## Pull issues from the GitHub API
 	.venv/bin/python -m triage.ingest
