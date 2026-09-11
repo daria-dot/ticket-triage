@@ -1,9 +1,5 @@
 name: CI
 
-# Push-to-ECR is intentionally not wired up yet: ECR itself is provisioned by
-# Phase 5's Terraform, which hasn't run. Adding that step now, before the
-# registry or any AWS auth exists, would just leave CI permanently red.
-
 on:
   push:
     branches: [main]
@@ -62,8 +58,40 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+
+    # id-token is what lets the job mint an OIDC token to assume the AWS role,
+    # so no long-lived AWS keys live in repository secrets.
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: eu-west-2
+      ECR_REPOSITORY: ticket-triage-api
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Build image
         run: docker build -t triage-api:${{ github.sha }} .
+
+      # Only main pushes images: the role's trust policy is scoped to
+      # refs/heads/main, so a PR build couldn't assume it anyway.
+      - name: Authenticate to AWS
+        if: github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::961341523002:role/ticket-triage-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        if: github.ref == 'refs/heads/main'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push
+        if: github.ref == 'refs/heads/main'
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${ECR_REPOSITORY}:${{ github.sha }}"
+          docker tag triage-api:${{ github.sha }} "$IMAGE"
+          docker push "$IMAGE"
