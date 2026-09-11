@@ -1,0 +1,8 @@
+{
+  "python.defaultInterpreterPath": ".venv/bin/python",
+  "python.testing.pytestEnabled": true,
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": { "source.fixAll.ruff": "explicit" },
+  "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
+  "files.exclude": { "**/__pycache__": true, "**/.pytest_cache": true }
+}
