@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
 
     mlflow_tracking_uri: str = "http://localhost:5001"
+    model_version: str
 
     @property
     def target_repo_list(self) -> list[str]:

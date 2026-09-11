@@ -12,3 +12,19 @@ CREATE TABLE IF NOT EXISTS raw_issues (
 -- so re-pulls can use the GitHub API's `since` filter instead of refetching everything.
 CREATE INDEX IF NOT EXISTS idx_raw_issues_repo_updated_at
     ON raw_issues (repo, (payload ->> 'updated_at'));
+
+-- Every /predict call. input_text is the exact title+body sent to the model,
+-- not just its hash -- kept for Phase 7 drift monitoring and debugging bad
+-- predictions. Safe to retain here since the source tickets are already-public
+-- GitHub issues, not private customer data.
+CREATE TABLE IF NOT EXISTS predictions (
+    id BIGSERIAL PRIMARY KEY,
+    input_hash TEXT NOT NULL,
+    input_text TEXT NOT NULL,
+    output JSONB NOT NULL,
+    model_version TEXT NOT NULL,
+    latency_ms DOUBLE PRECISION NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_predictions_created_at ON predictions (created_at);
