@@ -24,7 +24,7 @@ data/
 *.pkl
 *.joblib
 *.onnx
-models/
+/models/
 
 # MLflow
 mlruns/
