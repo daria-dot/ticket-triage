@@ -1,4 +1,4 @@
-.PHONY: help install lint test up down ingest train serve clean
+.PHONY: help install lint test up down db-init ingest train serve clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -22,7 +22,10 @@ up:  ## Start local stack (Postgres, MLflow)
 down:  ## Stop local stack
 	docker compose down
 
-ingest:  ## Pull issues from the GitHub API
+db-init:  ## Apply the DB schema (idempotent)
+	docker compose exec -T postgres psql -U $${POSTGRES_USER:-triage} -d $${POSTGRES_DB:-triage} -f - < sql/schema.sql
+
+ingest: db-init  ## Pull issues from the GitHub API
 	.venv/bin/python -m triage.ingest
 
 train:  ## Train and log a model run
