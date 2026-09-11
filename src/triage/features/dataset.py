@@ -14,3 +14,8 @@ def load_issue_categories(engine: Engine) -> pd.DataFrame:
 
 def combine_text(df: pd.DataFrame) -> pd.Series:
     return (df["title"].fillna("") + "\n" + df["body"].fillna("")).str.strip()
+
+
+def combine_title_body(title: str, body: str | None) -> str:
+    """Single-record equivalent of combine_text, for online inference. Must stay in sync."""
+    return f"{title}\n{body or ''}".strip()
