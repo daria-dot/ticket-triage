@@ -1,0 +1,69 @@
+name: CI
+
+# Push-to-ECR is intentionally not wired up yet: ECR itself is provisioned by
+# Phase 5's Terraform, which hasn't run. Adding that step now, before the
+# registry or any AWS auth exists, would just leave CI permanently red.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: triage
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: triage
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U triage"
+          --health-interval 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: triage
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: triage
+      TEST_POSTGRES_DB: triage_test
+      GITHUB_TOKEN: unused-in-ci
+      TARGET_REPOS: owner/repo
+      MODEL_VERSION: unused-in-ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Format check
+        run: ruff format --check src tests
+
+      - name: Type check
+        run: mypy src
+
+      - name: Tests (unit + data-validation integration)
+        run: pytest
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t triage-api:${{ github.sha }} .
