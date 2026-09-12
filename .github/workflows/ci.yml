@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: triage
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: triage
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U triage"
+          --health-interval 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: triage
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: triage
+      TEST_POSTGRES_DB: triage_test
+      GITHUB_TOKEN: unused-in-ci
+      TARGET_REPOS: owner/repo
+      MODEL_VERSION: unused-in-ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Format check
+        run: ruff format --check src tests
+
+      - name: Type check
+        run: mypy src
+
+      - name: Tests (unit + data-validation integration)
+        run: pytest
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    # id-token is what lets the job mint an OIDC token to assume the AWS role,
+    # so no long-lived AWS keys live in repository secrets.
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: eu-west-2
+      ECR_REPOSITORY: ticket-triage-api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t triage-api:${{ github.sha }} .
+
+      # Only main pushes images: the role's trust policy is scoped to
+      # refs/heads/main, so a PR build couldn't assume it anyway.
+      - name: Authenticate to AWS
+        if: github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::961341523002:role/ticket-triage-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        if: github.ref == 'refs/heads/main'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push
+        if: github.ref == 'refs/heads/main'
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${ECR_REPOSITORY}:${{ github.sha }}"
+          docker tag triage-api:${{ github.sha }} "$IMAGE"
+          docker push "$IMAGE"

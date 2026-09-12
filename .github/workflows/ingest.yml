@@ -1,0 +1,55 @@
+name: Scheduled ingest
+
+# Runs against a throwaway Postgres container, not a persistent store --
+# there's no deployed database until Phase 5 (RDS) exists. Until then this
+# is a regression check that the ingestion script still works against the
+# live GitHub API, not real continuous data accumulation.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: triage
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: triage
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U triage"
+          --health-interval 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: triage
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: triage
+      GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN }}
+      TARGET_REPOS: >-
+        huggingface/transformers,pandas-dev/pandas,scikit-learn/scikit-learn,
+        microsoft/vscode
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Apply schema
+        run: psql "postgresql://triage:changeme@localhost:5432/triage" -f sql/schema.sql
+
+      - name: Run ingest
+        run: python -m triage.ingest
