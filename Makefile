@@ -1,5 +1,5 @@
 .PHONY: help install lint test up down db-init ingest train serve clean \
-	infra-up infra-down infra-status
+	infra-up infra-down infra-down-all infra-status
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -45,7 +45,10 @@ clean:  ## Remove caches and build artifacts
 infra-up:  ## Provision AWS infrastructure (RDS bills ~$0.02/hour once up)
 	cd terraform && terraform apply
 
-infra-down:  ## Destroy all billable AWS infrastructure
+infra-down:  ## Destroy the billable resources, keeping free ones (VPC, ECR, IAM)
+	cd terraform && terraform destroy -target=aws_db_instance.main
+
+infra-down-all:  ## Destroy everything, including ECR images and CI's OIDC role
 	cd terraform && terraform destroy
 
 infra-status:  ## List anything currently billable, to catch what was left running
