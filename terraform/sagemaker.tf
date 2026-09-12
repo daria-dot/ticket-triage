@@ -1,14 +1,24 @@
-# Serverless inference rather than a real-time endpoint: it scales to zero, so
-# an endpoint nobody is calling costs nothing, where a real-time variant bills
-# per second around the clock. The trade is a few seconds of cold start, which
-# is irrelevant for a portfolio endpoint and would matter for real traffic.
+# Real-time inference. Serverless would be the better fit -- it scales to zero,
+# so an idle endpoint costs nothing, where this bills per second for as long as
+# it exists -- but serverless endpoints cannot be created in this account.
 #
-# Everything here is gated on api_image_tag being set. SageMaker models are
-# immutable, so the tag is part of the model name and a new image produces a
-# new model rather than mutating one in place.
+# That was established rather than assumed. Creation fails with a bare "Request
+# to service failed", producing no container logs at all, and it fails
+# identically with no model artifact attached. The image itself was pulled from
+# ECR and run locally exactly as SageMaker runs it (`docker run <image> serve`,
+# model mounted at /opt/ml/model) and served /ping and /invocations correctly;
+# every IAM action simulates as allowed; the manifest is a single amd64 v2
+# manifest, not a multi-arch list; and serverless quotas are non-zero. The same
+# image, artifact and role then created a real-time endpoint first time and
+# returned correct predictions. The fault is on the AWS side.
+#
+# Because this bills continuously, it is gated behind create_sagemaker and
+# defaults to off, so an apply made for an unrelated change provisions nothing.
+# SageMaker models are immutable, so the image tag forms part of the model name
+# and a new image produces a new model rather than mutating one in place.
 
 locals {
-  sagemaker_enabled = var.api_image_tag != ""
+  sagemaker_enabled = var.create_sagemaker && var.api_image_tag != ""
   model_name        = "ticket-triage-${substr(var.api_image_tag, 0, 12)}"
 }
 
@@ -87,13 +97,10 @@ resource "aws_sagemaker_endpoint_configuration" "api" {
     variant_name = "AllTraffic"
     model_name   = aws_sagemaker_model.api[0].name
 
-    serverless_config {
-      # Headroom for loading scikit-learn, MLflow and a 20k-feature vectoriser.
-      # Serverless bills per GB-second while a request is in flight, so this
-      # costs more per call but nothing at all while idle.
-      memory_size_in_mb = 3072
-      max_concurrency   = 1
-    }
+    # ml.c5.large is the cheapest x86 instance with a non-zero quota here. The
+    # cheaper ml.c6g family is Graviton, and this image is amd64.
+    instance_type          = var.sagemaker_instance_type
+    initial_instance_count = 1
   }
 }
 
