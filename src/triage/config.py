@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     mlflow_tracking_uri: str = "http://localhost:5001"
     model_version: str
 
+    aws_region: str = "eu-west-2"
+
     @property
     def target_repo_list(self) -> list[str]:
         return [repo.strip() for repo in self.target_repos.split(",") if repo.strip()]

@@ -18,6 +18,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Kept out of the runtime dependencies on purpose: torch and the transformer
+# weights would add gigabytes to a serving image that only needs to answer HTTP
+# requests. If an embedding model ever wins on merit and gets deployed, paying
+# that cost becomes a deliberate choice rather than an accident.
+training = [
+    "sentence-transformers>=3.0",
+    # Capped below 3.0: that release replaces the estimator API entirely
+    # (sagemaker.pytorch no longer exists) with a restructured one that little
+    # documentation covers yet. Not worth adapting to for a job that runs for
+    # twenty minutes.
+    "sagemaker>=2.200,<3",
+]
+
 dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
