@@ -19,7 +19,8 @@ output "github_actions_role_arn" {
 }
 
 output "db_endpoint" {
-  value = aws_db_instance.main.endpoint
+  description = "Null while create_rds is false and no database exists."
+  value       = one(aws_db_instance.main[*].endpoint)
 }
 
 output "db_password" {

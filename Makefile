@@ -1,5 +1,5 @@
 .PHONY: help install lint test up down db-init ingest train serve clean \
-	infra-up infra-down infra-down-all infra-status
+	infra-up infra-down infra-apply infra-down-all infra-status
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -42,11 +42,14 @@ clean:  ## Remove caches and build artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .pytest_cache .mypy_cache .ruff_cache
 
-infra-up:  ## Provision AWS infrastructure (RDS bills ~$0.02/hour once up)
-	cd terraform && terraform apply
+infra-up:  ## Provision AWS infrastructure including RDS (bills ~$0.02/hour once up)
+	cd terraform && terraform apply -var=create_rds=true
 
-infra-down:  ## Destroy the billable resources, keeping free ones (VPC, ECR, IAM)
-	cd terraform && terraform destroy -target=aws_db_instance.main
+infra-down:  ## Remove the billable resources, keeping free ones (VPC, ECR, IAM)
+	cd terraform && terraform apply -var=create_rds=false
+
+infra-apply:  ## Apply config changes without provisioning anything billable
+	cd terraform && terraform apply
 
 infra-down-all:  ## Destroy everything, including ECR images and CI's OIDC role
 	cd terraform && terraform destroy
