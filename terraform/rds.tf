@@ -2,6 +2,11 @@
 # the authoritative dev store (see Phase 3), so this instance is expected to be
 # created on demand and destroyed at the end of a session -- the single largest
 # avoidable cost in this project after the SageMaker endpoint.
+#
+# It is therefore gated behind create_rds, defaulting to off. Without that, an
+# apply made for an unrelated change would silently rebuild the database and
+# start billing again, which is exactly the accident this project is trying to
+# avoid. `make infra-up` flips it on; `make infra-down` flips it back.
 
 resource "random_password" "db" {
   length = 32
@@ -15,6 +20,8 @@ resource "aws_db_subnet_group" "main" {
 }
 
 resource "aws_db_instance" "main" {
+  count = var.create_rds ? 1 : 0
+
   identifier     = "ticket-triage"
   engine         = "postgres"
   engine_version = "16"
