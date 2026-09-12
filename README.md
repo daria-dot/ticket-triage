@@ -12,8 +12,9 @@ is live data ingestion, reproducible training, a deployed endpoint,
 infrastructure as code, CI/CD, and the reasoning behind the choices — including
 the ones that went against the obvious answer.
 
-**Status:** Phases 1–6 complete (data, baseline model, service, container/CI,
-infrastructure, model comparison). Phase 7 (drift monitoring) not started.
+**Status:** Phases 1–6 complete — data, baseline model, service, container and
+CI, infrastructure, model comparison. Drift monitoring is deliberately not
+built; see the end of this file for why.
 
 Training data: `huggingface/transformers`, `pandas-dev/pandas`,
 `scikit-learn/scikit-learn`, `microsoft/vscode` — 467,491 issues ingested.
@@ -312,7 +313,18 @@ rather than with a half-run.
 **A DistilBERT fine-tune.** Conditional on embeddings showing promise, which
 they didn't. See the results section.
 
-**Drift monitoring.** Phase 7. The prediction log already keeps what it needs.
+**Drift monitoring.** Not built, and not for lack of time. Drift monitoring
+compares live prediction distributions against the training set, and there is
+no live traffic to compare: the endpoint is created on demand and destroyed
+after, and the prediction log holds three rows, all of them mine. A weekly job
+watching an empty table would be decoration.
+
+The groundwork is done rather than skipped. Predictions are logged with their
+raw text specifically so distributions can be compared later, the hashed split
+means "the training distribution" is a precisely defined set rather than a
+moving target, and routing inference through the API means a deployed
+prediction is recorded like any other. What is missing is traffic, which is a
+reason to wait rather than a thing to fake.
 
 **Continuous accumulation into RDS.** The security group is scoped to a single
 IP, so GitHub Actions runners can't reach it, and the instance is destroyed
