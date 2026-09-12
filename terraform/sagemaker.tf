@@ -59,9 +59,17 @@ resource "aws_iam_role_policy" "sagemaker_execution" {
         Resource = aws_ecr_repository.api.arn
       },
       {
+        # Inference only reads the model artifact, but training jobs also read
+        # the exported dataset and write the fitted model back.
         Effect   = "Allow"
-        Action   = "s3:GetObject"
+        Action   = ["s3:GetObject", "s3:PutObject"]
         Resource = "${aws_s3_bucket.artifacts.arn}/*"
+      },
+      {
+        # Training jobs list the input prefix before downloading it.
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.artifacts.arn
       },
       {
         Effect = "Allow"
@@ -71,6 +79,12 @@ resource "aws_iam_role_policy" "sagemaker_execution" {
           "logs:PutLogEvents",
         ]
         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/*"
+      },
+      {
+        # Training jobs publish their own progress metrics.
+        Effect   = "Allow"
+        Action   = "cloudwatch:PutMetricData"
+        Resource = "*" # This action does not support resource-level permissions.
       },
     ]
   })

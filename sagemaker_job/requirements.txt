@@ -1,0 +1,3 @@
+# Installed by SageMaker into the prebuilt PyTorch training image, which
+# already provides torch, numpy, pandas and scikit-learn.
+sentence-transformers>=3.0

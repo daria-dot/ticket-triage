@@ -12,9 +12,8 @@ is live data ingestion, reproducible training, a deployed endpoint,
 infrastructure as code, CI/CD, and the reasoning behind the choices — including
 the ones that went against the obvious answer.
 
-**Status:** Phases 1–5 complete (data, baseline model, service, container/CI,
-infrastructure). Phase 6 (better models) and Phase 7 (drift monitoring) not
-started.
+**Status:** Phases 1–6 complete (data, baseline model, service, container/CI,
+infrastructure, model comparison). Phase 7 (drift monitoring) not started.
 
 Training data: `huggingface/transformers`, `pandas-dev/pandas`,
 `scikit-learn/scikit-learn`, `microsoft/vscode` — 467,491 issues ingested.
@@ -53,28 +52,67 @@ URI against.
 
 ## Results
 
-Baseline, held-out 20% test split. Per-label precision and recall, never a
-single accuracy number: the five categories are independent and unevenly
-covered, so one aggregate score would hide more than it shows.
+Both approaches scored on the identical held-out test set — 62,331 issues,
+assigned by hashing each issue's identity rather than drawn at random, so the
+comparison is like-for-like. Per-label precision and recall stay the primary
+reading; macro F1 exists only to give the comparison a single ordering.
+
+| Category | TF-IDF F1 | Embeddings F1 |
+|---|---|---|
+| bug | **0.566** | 0.508 |
+| feature | **0.530** | 0.498 |
+| docs | **0.390** | 0.223 |
+| question | **0.165** | 0.124 |
+| duplicate | **0.294** | 0.268 |
+| **macro** | **0.389** | **0.324** |
+
+Baseline detail, TF-IDF with one-vs-rest logistic regression:
 
 | Category | Precision | Recall | Support |
 |---|---|---|---|
-| bug | 0.448 | 0.774 | 12,337 |
-| feature | 0.387 | 0.792 | 7,244 |
-| docs | 0.260 | 0.891 | 865 |
-| question | 0.094 | 0.620 | 1,752 |
-| duplicate | 0.184 | 0.665 | 6,035 |
+| bug | 0.447 | 0.772 | 12,148 |
+| feature | 0.396 | 0.803 | 7,187 |
+| docs | 0.252 | 0.864 | 853 |
+| question | 0.095 | 0.631 | 1,690 |
+| duplicate | 0.189 | 0.659 | 6,086 |
 
-Recall is strong everywhere and precision is poor everywhere. That is what
+Recall is strong everywhere and precision is poor everywhere, which is what
 `class_weight="balanced"` buys on a linear model: it pushes hard toward catching
-positives at the cost of false alarms. `question` is worst by a distance, which
-is unsurprising — "is this a question" is far more semantic than lexical, and
-TF-IDF sees only words.
+positives at the cost of false alarms. `question` is worst by a distance —
+"is this a question" is far more semantic than lexical, and TF-IDF sees only
+words.
 
-This is a floor to measure against, not a result to defend. It exists so that
-Phase 6 can show whether embeddings and a fine-tuned transformer actually earn
-their extra cost and complexity, which is a claim you can only make against a
-documented baseline.
+### Word counting beat sentence embeddings
+
+Swapping TF-IDF for `all-MiniLM-L6-v2` embeddings, holding the classifier,
+hyperparameters and test split fixed, made every single label worse. Four
+plausible causes, roughly in order of suspected weight:
+
+- **Truncation.** MiniLM stops at 256 tokens; the average issue is nearer 440
+  tokens' worth, and the 95th percentile far beyond. TF-IDF reads the whole
+  document.
+- **The task is more lexical than semantic.** "feature request", stack traces
+  and "duplicate of #123" are literal string signals, which 20,000 TF-IDF
+  features and bigrams capture directly.
+- **Compression.** 384 dimensions against 20,000 features discards a lot where
+  surface form carries the signal.
+- **Domain.** MiniLM is trained on general web text, not developer writing.
+
+The honest caveat: this rests on one comparatively weak encoder. A stronger,
+longer-context model (`bge-base-en-v1.5` at 512 tokens) was started and stopped
+on cost grounds before producing a number, so "embeddings lose" is better read
+as "the cheap embedding approach loses" than as a settled fact.
+
+It is still a useful result. The point of building a documented baseline first
+was to make this claim measurable instead of assumed, and the measurement says
+the extra machinery did not earn its place.
+
+### On the model that was not fine-tuned
+
+The build order calls for a DistilBERT fine-tune "if the gain justifies it".
+The gain from embeddings was negative, and a heavier transformer over the same
+truncated inputs has no obvious reason to reverse that, so it was not attempted.
+That is the criterion doing its job rather than a step skipped.
 
 ## Local setup
 
@@ -104,6 +142,18 @@ without duplicates — a second run only fetches what changed. Then:
 
 ```bash
 make train
+```
+
+Model training that needs a GPU runs on AWS rather than locally — embedding the
+corpus takes about 40 minutes on an M1 laptop and roughly 12 on a spot GPU, for
+about eight cents:
+
+```bash
+make export-dataset
+```
+
+```bash
+make train-cloud
 ```
 
 ```bash
@@ -186,6 +236,26 @@ numeric owner and repository IDs in the OIDC subject claim
 repo and recreating it under the same name cannot inherit its trust. CloudTrail
 showed the real claim; the policy now accepts both forms.
 
+**The train/test split is hashed from issue identity, not drawn at random.**
+`train_test_split(random_state=...)` fixes which *positions* land in the test
+set, and a `SELECT` without `ORDER BY` promises nothing about which row sits at
+a given position — so the same seed could quietly evaluate different issues
+after a vacuum or a parallel scan. Comparing approaches means the split has to
+be pinned to the issues themselves, so it lives in the view as a hash of
+`(repo, issue_number)`. New issues land on a side without disturbing existing
+ones.
+
+**GPU training runs on SageMaker, not the laptop.** Embedding the corpus takes
+about 40 minutes locally on an 8GB M1 and around 12 on a spot GPU for eight
+cents, with the machine left usable throughout. Managed spot gave a 67%
+discount on the run that produced the numbers above: 331 billable seconds
+against 1,002 of wall clock.
+
+**Training dependencies are an optional extra, not runtime ones.** torch and the
+transformer weights would add gigabytes to a serving image that only answers
+HTTP requests. If an embedding model ever wins on merit, paying that becomes a
+deliberate choice.
+
 **No NAT gateway.** It would cost about $32/month for outbound access nothing
 here needs. RDS only requires a subnet group spanning two availability zones,
 and the SageMaker endpoint isn't VPC-attached because it authenticates by IAM
@@ -220,9 +290,14 @@ reliable ground truth for category and nothing equivalent for the other two —
 inventing labels for them would produce a model that scores well against its own
 assumptions and means nothing.
 
-**Better models.** Sentence embeddings and a DistilBERT fine-tune are Phase 6.
-The point of the baseline is to make that comparison honest rather than
-assumed.
+**A zero-shot LLM comparison arm.** The build order asks for one, measured on
+cost per thousand tickets against latency and F1. It needs an API key that
+isn't set up, and the question it answers — is training our own model worth it
+versus calling someone else's — is worth answering properly or not at all,
+rather than with a half-run.
+
+**A DistilBERT fine-tune.** Conditional on embeddings showing promise, which
+they didn't. See the results section.
 
 **Drift monitoring.** Phase 7. The prediction log already keeps what it needs.
 
