@@ -13,3 +13,13 @@ variable "github_repository" {
   type        = string
   default     = "daria-dot/ticket-triage"
 }
+
+variable "postgres_db" {
+  type    = string
+  default = "triage"
+}
+
+variable "postgres_user" {
+  type    = string
+  default = "triage"
+}
