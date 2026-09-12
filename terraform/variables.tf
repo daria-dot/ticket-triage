@@ -27,10 +27,22 @@ variable "github_repository_id" {
   default     = "1365824571"
 }
 
-variable "api_image_tag" {
-  description = "ECR image tag to serve from SageMaker. Empty means no endpoint is created at all."
+variable "create_sagemaker" {
+  description = "Whether the billable SageMaker endpoint should exist. Off by default: it bills per second for as long as it exists."
+  type        = bool
+  default     = false
+}
+
+variable "sagemaker_instance_type" {
+  description = "Cheapest x86 instance with a non-zero quota in eu-west-2. The cheaper c6g family is Graviton and won't run an amd64 image."
   type        = string
-  default     = ""
+  default     = "ml.c5.large"
+}
+
+variable "api_image_tag" {
+  description = "ECR image tag to serve from SageMaker. Bump deliberately to promote a new image, the way model_version promotes a new model."
+  type        = string
+  default     = "bafc5c3eb7da5f492c081facfeda5fe744c55b5e"
 }
 
 variable "model_artifact_key" {
