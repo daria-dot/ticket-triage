@@ -7,11 +7,11 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import create_engine, text
 
-from triage.api.model_loader import get_model
+from triage.api.inference import predict_probabilities
 from triage.api.predictions_db import log_prediction
 from triage.api.schemas import PredictRequest, PredictResponse
 from triage.config import get_settings
-from triage.features.dataset import LABEL_COLUMNS, combine_title_body
+from triage.features.dataset import combine_title_body
 
 settings = get_settings()
 engine = create_engine(settings.database_url)
@@ -26,7 +26,11 @@ def health() -> dict[str, str]:
             conn.execute(text("SELECT 1"))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"database unreachable: {exc}") from exc
-    return {"status": "ok", "model_version": settings.model_version}
+    return {
+        "status": "ok",
+        "model_version": settings.model_version,
+        "inference_backend": settings.inference_backend,
+    }
 
 
 @app.get("/metrics")
@@ -54,15 +58,11 @@ def predict(request: PredictRequest) -> PredictResponse:
     text_input = combine_title_body(request.title, request.body)
     input_hash = hashlib.sha256(text_input.encode("utf-8")).hexdigest()
 
-    model = get_model()
+    # Latency covers whichever backend served this, so the logged figure means
+    # the same thing whether the model ran here or in SageMaker.
     start = time.perf_counter()
-    probabilities = model.predict_proba([text_input])[0]
+    predictions = predict_probabilities(request.title, request.body)
     latency_ms = (time.perf_counter() - start) * 1000
-
-    predictions = {
-        label.removeprefix("is_"): float(p)
-        for label, p in zip(LABEL_COLUMNS, probabilities, strict=True)
-    }
 
     log_prediction(
         engine,
