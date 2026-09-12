@@ -1,4 +1,4 @@
-.PHONY: help install lint test up down db-init ingest train serve clean \
+.PHONY: help install lint test up down db-init ingest train export-dataset train-cloud serve clean \
 	infra-up endpoint-up infra-down infra-apply infra-down-all infra-status
 
 help:
@@ -7,7 +7,7 @@ help:
 
 install:  ## Install dependencies and pre-commit hooks
 	python -m venv .venv
-	.venv/bin/pip install -e ".[dev]"
+	.venv/bin/pip install -e ".[dev,training]"
 	.venv/bin/pre-commit install
 
 lint:  ## Run linters and type checker
@@ -32,8 +32,14 @@ db-init:  ## Apply the DB schema and feature views (idempotent)
 ingest: db-init  ## Pull issues from the GitHub API
 	.venv/bin/python -m triage.ingest
 
-train:  ## Train and log a model run
+train:  ## Train and log the TF-IDF baseline
 	.venv/bin/python -m triage.models.train
+
+export-dataset:  ## Export the training frame to S3 for cloud training
+	.venv/bin/python -m triage.models.export_dataset --bucket $$(cd terraform && terraform output -raw artifacts_bucket)
+
+train-cloud:  ## Train the embedding model on a SageMaker spot GPU (~5c per run)
+	.venv/bin/python -m triage.models.launch_training --bucket $$(cd terraform && terraform output -raw artifacts_bucket)
 
 serve:  ## Run the API locally
 	.venv/bin/uvicorn triage.api.main:app --reload --port 8000

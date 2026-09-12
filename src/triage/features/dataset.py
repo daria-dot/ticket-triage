@@ -12,6 +12,16 @@ def load_issue_categories(engine: Engine) -> pd.DataFrame:
     return df
 
 
+def split_frames(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Train and test frames, partitioned by the view's hashed `split` column.
+
+    Deliberately not train_test_split: a seed fixes which positions go to test,
+    not which issues, so comparing one approach against another needs the split
+    pinned to issue identity instead. See sql/views/issue_categories.sql.
+    """
+    return df[df["split"] == "train"], df[df["split"] == "test"]
+
+
 def combine_text(df: pd.DataFrame) -> pd.Series:
     return (df["title"].fillna("") + "\n" + df["body"].fillna("")).str.strip()
 
