@@ -1,6 +1,7 @@
 """Central settings object. Every value comes from the environment — see .env.example."""
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,6 +22,13 @@ class Settings(BaseSettings):
     model_version: str
 
     aws_region: str = "eu-west-2"
+
+    # Where inference happens. "local" loads the registered model in-process,
+    # which is what docker compose does. "sagemaker" calls the deployed
+    # endpoint instead, so the logging this service already does covers the
+    # deployed path too -- the endpoint itself has no database to write to.
+    inference_backend: Literal["local", "sagemaker"] = "local"
+    sagemaker_endpoint_name: str = "ticket-triage"
 
     @property
     def target_repo_list(self) -> list[str]:
