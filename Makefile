@@ -1,4 +1,5 @@
-.PHONY: help install lint test up down db-init ingest train serve clean
+.PHONY: help install lint test up down db-init ingest train serve clean \
+	infra-up infra-down infra-status
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -40,3 +41,24 @@ serve:  ## Run the API locally
 clean:  ## Remove caches and build artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .pytest_cache .mypy_cache .ruff_cache
+
+infra-up:  ## Provision AWS infrastructure (RDS bills ~$0.02/hour once up)
+	cd terraform && terraform apply
+
+infra-down:  ## Destroy all billable AWS infrastructure
+	cd terraform && terraform destroy
+
+infra-status:  ## List anything currently billable, to catch what was left running
+	@printf 'RDS instances:      '
+	@aws rds describe-db-instances --output text \
+		--query "DBInstances[].[DBInstanceIdentifier,DBInstanceStatus,DBInstanceClass]" \
+		| grep . || echo "none"
+	@printf 'SageMaker endpoints: '
+	@aws sagemaker list-endpoints --output text \
+		--query "Endpoints[].[EndpointName,EndpointStatus]" \
+		| grep . || echo "none"
+	@printf 'Month-to-date spend: '
+	@aws budgets describe-budgets --output text \
+		--account-id $$(aws sts get-caller-identity --query Account --output text) \
+		--query "Budgets[].[CalculatedSpend.ActualSpend.Amount,BudgetLimit.Amount]" \
+		| awk '{printf "$$%s of $$%s budget\n", $$1, $$2}'
