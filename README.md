@@ -35,7 +35,8 @@ flowchart TB
     subgraph serve ["Serving"]
         ML -->|"model.tar.gz"| S3[("S3 artifacts")]
         API["FastAPI<br/>predict, health, metrics"] -->|"hash, text, output,<br/>version, latency"| PG
-        S3 --> SM["SageMaker endpoint<br/>ping, invocations"]
+        API -->|"INFERENCE_BACKEND=sagemaker"| SM["SageMaker endpoint<br/>ping, invocations"]
+        S3 --> SM
         ECR[("ECR")] --> SM
     end
 
@@ -45,10 +46,11 @@ flowchart TB
     end
 ```
 
-Local development runs the FastAPI service against Postgres and MLflow via
-`docker compose`. SageMaker is the deployed artifact and serves inference only —
-it has neither a database to log to nor an MLflow server to resolve a registry
-URI against.
+`INFERENCE_BACKEND` decides where a prediction is computed: in this process
+against the registered model, or by calling the deployed endpoint. Either way
+the API does the logging, because the endpoint cannot — a model server has no
+database to write to. So a prediction served from AWS is recorded exactly like
+one served locally, and the deployed path stays observable.
 
 ## Results
 
@@ -235,6 +237,17 @@ numeric owner and repository IDs in the OIDC subject claim
 (`repo:owner@186747603/name@1365824571:ref:refs/heads/main`) so that deleting a
 repo and recreating it under the same name cannot inherit its trust. CloudTrail
 showed the real claim; the policy now accepts both forms.
+
+**The API logs predictions, the endpoint does not.** Giving the model server a
+database would put application concerns inside the thing whose only job is
+turning text into numbers, so inference is routed through the API instead and
+the log covers both paths identically. Verified against a live endpoint: a
+prediction served from AWS took 398ms against roughly 8ms in-process — the
+round trip — and landed in Postgres with its input text intact.
+
+There is deliberately no fallback between the backends. An unreachable endpoint
+surfaces as an error, because quietly answering from a different model than the
+caller believes they are using is worse than failing.
 
 **The train/test split is hashed from issue identity, not drawn at random.**
 `train_test_split(random_state=...)` fixes which *positions* land in the test
