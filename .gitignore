@@ -24,7 +24,7 @@ data/
 *.pkl
 *.joblib
 *.onnx
-models/
+/models/
 
 # MLflow
 mlruns/
@@ -36,7 +36,6 @@ mlflow.db
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
-.terraform.lock.hcl
 
 # Notebooks
 .ipynb_checkpoints/
