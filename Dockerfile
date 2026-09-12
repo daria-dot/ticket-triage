@@ -22,12 +22,16 @@ RUN groupadd --system triage && useradd --system --gid triage --no-create-home t
 
 COPY --from=builder /venv /venv
 COPY src ./src
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV PATH="/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
 USER triage
 
-EXPOSE 8000
+# 8000 for the application API, 8080 for SageMaker's serving contract.
+EXPOSE 8000 8080
 
-CMD ["uvicorn", "triage.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

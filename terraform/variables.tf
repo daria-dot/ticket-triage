@@ -27,6 +27,18 @@ variable "github_repository_id" {
   default     = "1365824571"
 }
 
+variable "api_image_tag" {
+  description = "ECR image tag to serve from SageMaker. Empty means no endpoint is created at all."
+  type        = string
+  default     = ""
+}
+
+variable "model_artifact_key" {
+  description = "Key of model.tar.gz within the artifacts bucket."
+  type        = string
+  default     = "models/baseline/model.tar.gz"
+}
+
 variable "create_rds" {
   description = "Whether the billable RDS instance should exist. Off by default so an unrelated apply can't quietly provision a database."
   type        = bool

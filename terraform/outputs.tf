@@ -27,3 +27,12 @@ output "db_password" {
   value     = random_password.db.result
   sensitive = true
 }
+
+output "artifacts_bucket" {
+  value = aws_s3_bucket.artifacts.id
+}
+
+output "sagemaker_endpoint_name" {
+  description = "Null while api_image_tag is unset and no endpoint exists."
+  value       = one(aws_sagemaker_endpoint.api[*].name)
+}
