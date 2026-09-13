@@ -1,0 +1,12 @@
+# The prebuilt SKLearn training image already provides scikit-learn, pandas,
+# numpy and joblib. Two are pinned anyway:
+#
+# scikit-learn -- the newest available image ships 1.2, while the API serves
+# under >=1.5. A pipeline pickled by one and unpickled by the other is at best
+# a warning and at worst a silent behaviour change, so the job installs the
+# version the artifact will actually be loaded under.
+#
+# pyarrow -- the dataset arrives as Parquet and a missing engine would fail at
+# read time, after the instance is already billing.
+scikit-learn>=1.5
+pyarrow>=15.0
