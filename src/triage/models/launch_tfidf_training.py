@@ -5,6 +5,14 @@ this off the laptop buys is 16GB of RAM for a corpus that does not fit
 comfortably in 8GB beside a running Docker stack, and a machine that stays
 usable while it runs. Spot pricing applies for the same reason it does on the
 embedding job -- an interruption on a job this short just means running it again.
+
+Uses the PyTorch image on a CPU instance rather than the SKLearn one, which
+reads oddly for a job with no tensors in it. The newest SKLearn image is Python
+3.9 with numpy 1.x, and installing a scikit-learn recent enough to match the
+serving runtime breaks its compiled extensions at import. The PyTorch py312
+image already carries a mutually consistent numpy and scikit-learn, and is the
+image the embedding job proved out in this account. The instance type is what
+selects the CPU build of it.
 """
 
 import argparse
@@ -15,8 +23,8 @@ from pathlib import Path
 
 import boto3
 import mlflow
+from sagemaker.pytorch import PyTorch
 from sagemaker.session import Session
-from sagemaker.sklearn import SKLearn
 
 from triage.config import get_settings
 
@@ -54,7 +62,8 @@ def main() -> None:
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--input-key", default="datasets/issue_categories.parquet")
     parser.add_argument("--instance-type", default="ml.m5.xlarge")
-    parser.add_argument("--framework-version", default="1.2-1")
+    parser.add_argument("--framework-version", default="2.6.0")
+    parser.add_argument("--py-version", default="py312")
     parser.add_argument("--max-features", type=int, default=20_000)
     parser.add_argument("--on-demand", action="store_true", help="Disable spot pricing.")
     # Bounded so a hang cannot bill indefinitely. The fit is minutes, not hours.
@@ -66,14 +75,14 @@ def main() -> None:
     role = boto3.client("iam").get_role(RoleName="ticket-triage-sagemaker-execution")["Role"]["Arn"]
 
     spot = not args.on_demand
-    estimator = SKLearn(
+    estimator = PyTorch(
         entry_point="train.py",
         source_dir=str(SOURCE_DIR),
         role=role,
         instance_type=args.instance_type,
         instance_count=1,
         framework_version=args.framework_version,
-        py_version="py3",
+        py_version=args.py_version,
         sagemaker_session=session,
         output_path=f"s3://{args.bucket}/training-output",
         hyperparameters={"max-features": args.max_features},
