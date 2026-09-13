@@ -1,10 +1,12 @@
-"""FastAPI service: /predict, /health, /metrics."""
+"""FastAPI service: /predict, /health, /metrics, and a page to drive them."""
 
 import hashlib
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from sqlalchemy import create_engine, text
 
 from triage.api.inference import decide, predict_probabilities, thresholds
@@ -17,6 +19,21 @@ settings = get_settings()
 engine = create_engine(settings.database_url)
 
 app = FastAPI(title="Ticket Triage API")
+
+STATIC = Path(__file__).parent / "static"
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    """A page that drives /predict, mostly so the thresholds can be seen.
+
+    Five probabilities and five different cuts is the one part of this service
+    that does not survive being read as JSON -- the whole point is that the cut
+    sits somewhere different for each label, which is a picture rather than a
+    number. It calls the same endpoint as any other client and applies no logic
+    of its own beyond drawing what comes back.
+    """
+    return (STATIC / "index.html").read_text()
 
 
 @app.get("/health")

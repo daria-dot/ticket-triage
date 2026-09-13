@@ -30,3 +30,14 @@ def test_health_is_ok_against_a_reachable_database(pg_engine: Engine):
 def test_predict_rejects_an_empty_title():
     response = client.post("/predict", json={"title": "", "body": "test"})
     assert response.status_code == 422
+
+
+def test_the_page_is_served_and_calls_the_same_endpoint():
+    """The demo page ships with the package, so a built image serves it too --
+    it is package data, which a wheel omits unless asked."""
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    # It has no model of its own: whatever it draws came from /predict.
+    assert '"/predict"' in response.text
