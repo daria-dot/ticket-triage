@@ -1,5 +1,7 @@
-"""The hashed train/test split is what makes comparing model approaches honest,
-so it needs to actually be stable and disjoint rather than merely look it.
+"""The hashed train/val/test split is what makes comparing model approaches
+honest, so it needs to actually be stable and disjoint rather than merely look
+it. `val` exists so a decision threshold can be fitted on data the model has
+not seen without ever touching `test`.
 """
 
 import json
@@ -47,7 +49,7 @@ def test_every_issue_is_on_exactly_one_side(engine: Engine):
         ).all()
 
     counts = dict(rows)
-    assert set(counts) == {"train", "test"}
+    assert set(counts) == {"train", "val", "test"}
     assert sum(counts.values()) == 400
 
 
@@ -60,6 +62,41 @@ def test_the_test_side_is_roughly_a_fifth(engine: Engine):
     # Hashing won't land on exactly 20% for a small sample; the point is that
     # it's near, not that it's exact.
     assert 0.12 < float(share) < 0.28
+
+
+def test_the_validation_side_is_roughly_a_tenth(engine: Engine):
+    with engine.connect() as conn:
+        share = conn.execute(
+            text("SELECT avg((split = 'val')::int) FROM issue_categories")
+        ).scalar()
+
+    # Buckets 20-29 of 100. Same caveat as the test side: near, not exact.
+    assert 0.04 < float(share) < 0.18
+
+
+def test_carving_out_val_did_not_disturb_the_test_side(engine: Engine):
+    """`test` is buckets 0-19 and must stay so -- val was taken from train.
+
+    If this ever fails, every previously published metric silently stopped
+    being comparable, which is the one failure this whole scheme exists to
+    prevent.
+    """
+    with engine.connect() as conn:
+        mismatched = conn.execute(
+            text(
+                """
+                SELECT count(*) FROM issue_categories ic
+                JOIN raw_issues ri
+                  ON ri.repo = ic.repo AND ri.issue_number = ic.issue_number
+                WHERE (ic.split = 'test') <> (
+                    ('x' || substr(md5(ri.repo || '#' || ri.issue_number::text), 1, 6))
+                        ::bit(24)::int % 100 < 20
+                )
+                """
+            )
+        ).scalar()
+
+    assert mismatched == 0
 
 
 def test_an_issue_keeps_its_side_when_its_content_changes(engine: Engine):
