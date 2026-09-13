@@ -10,7 +10,7 @@
 -- a synthetic "other" ground truth invented by us.
 --
 -- Built from the actual label distribution across the ~495k issues ingested
--- in Phase 1 (see README Decisions). Revisit if a re-ingest surfaces label
+-- during ingestion (see README Decisions). Revisit if a re-ingest surfaces label
 -- vocabulary this doesn't cover yet.
 CREATE OR REPLACE VIEW label_category_map AS
 SELECT * FROM (VALUES
