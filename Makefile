@@ -41,6 +41,9 @@ export-dataset:  ## Export the training frame to S3 for cloud training
 train-cloud:  ## Train the embedding model on a SageMaker spot GPU (~5c per run)
 	.venv/bin/python -m triage.models.launch_training --bucket $$(cd terraform && terraform output -raw artifacts_bucket)
 
+train-cloud-tfidf:  ## Fit the TF-IDF baseline and its thresholds on a spot CPU (~10c per run)
+	.venv/bin/python -m triage.models.launch_tfidf_training --bucket $$(cd terraform && terraform output -raw artifacts_bucket)
+
 serve:  ## Run the API locally
 	.venv/bin/uvicorn triage.api.main:app --reload --port 8000
 

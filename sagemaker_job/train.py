@@ -53,8 +53,9 @@ def main() -> None:
     missing = set(LABEL_COLUMNS) - set(df.columns)
     if missing:
         raise ValueError(f"exported dataset is missing label columns: {sorted(missing)}")
-    if set(df["split"].unique()) != {"train", "test"}:
-        raise ValueError(f"unexpected split values: {sorted(df['split'].unique())}")
+    splits = set(df["split"].unique())
+    if splits != {"train", "val", "test"}:
+        raise ValueError(f"unexpected split values: {sorted(splits)}")
 
     import torch
 
@@ -79,17 +80,21 @@ def main() -> None:
         flush=True,
     )
 
+    # `~is_train` would now sweep val into the evaluation set. Both sides are
+    # named explicitly so adding a fourth split later cannot silently change
+    # what "test" means.
     is_train = (df["split"] == "train").to_numpy()
+    is_test = (df["split"] == "test").to_numpy()
     y = df[LABEL_COLUMNS].astype(int).to_numpy()
 
     classifier = OneVsRestClassifier(
         LogisticRegression(max_iter=args.max_iter, class_weight="balanced")
     )
     classifier.fit(embeddings[is_train], y[is_train])
-    predictions = classifier.predict(embeddings[~is_train])
+    predictions = classifier.predict(embeddings[is_test])
 
     precision, recall, f1, support = precision_recall_fscore_support(
-        y[~is_train], predictions, average=None, zero_division=0
+        y[is_test], predictions, average=None, zero_division=0
     )
 
     metrics = {
