@@ -45,7 +45,11 @@
   .mode { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; margin-left: auto; }
   .mode button { background: transparent; color: var(--dim); border-radius: 0; font-size: 12px; padding: 8px 13px; font-weight: 500; }
   .mode button[aria-pressed="true"] { background: var(--line); color: var(--text); }
-  #out { margin-top: 24px; }
+  #out { margin-top: 12px; }
+  .src { margin-top: 16px; font-size: 12px; color: var(--dim); }
+  .src a { color: var(--accent); text-decoration: none; }
+  .src a:hover { text-decoration: underline; }
+  .src b { color: var(--text); }
   .bars { display: grid; gap: 3px; }
   .bar { display: grid; grid-template-columns: 92px 1fr 62px; align-items: center; gap: 14px; padding: 16px 0 7px; }
   .name { font: 13px var(--mono); color: var(--dim); }
@@ -87,9 +91,9 @@
     <textarea id="body">The README still shows the old pip command and the quickstart section is out of date. Documentation needs updating.</textarea>
     <div class="row">
       <button id="go">Classify</button>
-      <button class="ex" data-ex="bug">bug</button>
-      <button class="ex" data-ex="feature">feature</button>
-      <button class="ex" data-ex="question">question</button>
+      <button class="ex" data-ex="duplicate">real: duplicate</button>
+      <button class="ex" data-ex="docs">real: docs</button>
+      <button class="ex" data-ex="question">real: question</button>
       <div class="mode">
         <button id="m-fitted" aria-pressed="true">fitted thresholds</button>
         <button id="m-half" aria-pressed="false">single 0.5 cut</button>
@@ -97,17 +101,30 @@
     </div>
   </div>
 
+  <div id="source"></div>
   <div id="out"></div>
 </div>
 
 <script>
+// Real issues from the held-out test split, so the model has provably never
+// trained on them, and the maintainer's own label is known. Kept verbatim,
+// typos included -- these are what the tickets actually look like.
 const EXAMPLES = {
-  bug: ["App crashes on startup with NullPointerException",
-        "Stack trace attached. Reproducible on every launch since 2.1.0."],
-  feature: ["Add dark mode support",
-            "It would be great if the editor supported a dark theme."],
-  question: ["How do I configure the cache directory?",
-             "I couldn't find this in the docs. Is there an environment variable for it?"],
+  duplicate: {
+    repo: "microsoft/vscode", number: 2818, truth: "duplicate",
+    title: "Tabs toggling word wrap doesn't work",
+    body: "When using tab delimited files after about 25tabs they wrap to next line when having multiple lines of tabs you cannot change so they are all on one line. Only the last line wraps.\n\nIf you change the wrappingColumn size to 100000000000\n\nIt does not wrap but as soon as you toggle word wrap it always wraps.\n\n**note it must be tabs not spaces.",
+  },
+  docs: {
+    repo: "scikit-learn/scikit-learn", number: 19280, truth: "docs",
+    title: "Document link function in PoissonRegressor and GammaRegressor",
+    body: "#### Describe the issue linked to the documentation\nThe link function used in `PoissonRegressor` and `GammaRegressor` is not documented in the docstrings. They both use the log-link.",
+  },
+  question: {
+    repo: "microsoft/vscode", number: 78418, truth: "question",
+    title: "how to debugg js file without need configure launch.json",
+    body: "i just want to quick debugger file in node enviroment, but when change file to debugger every time ,i must change launch.json file, it's too tedious, can you help me",
+  },
 };
 
 let last = null;          // most recent API response
@@ -192,13 +209,18 @@ function setMode(next) {
   render();
 }
 
-$("go").onclick = classify;
+$("go").onclick = () => { $("source").innerHTML = ""; classify(); };
 $("m-fitted").onclick = () => setMode("fitted");
 $("m-half").onclick = () => setMode("half");
 document.querySelectorAll(".ex").forEach((b) => {
   b.onclick = () => {
-    const [t, body] = EXAMPLES[b.dataset.ex];
-    $("title").value = t; $("body").value = body;
+    const ex = EXAMPLES[b.dataset.ex];
+    $("title").value = ex.title;
+    $("body").value = ex.body;
+    $("source").innerHTML =
+      `<div class="src">Held-out test split · ` +
+      `<a href="https://github.com/${ex.repo}/issues/${ex.number}" target="_blank" rel="noreferrer">` +
+      `${ex.repo}#${ex.number}</a> · maintainer labelled it <b>${ex.truth}</b></div>`;
     classify();
   };
 });
