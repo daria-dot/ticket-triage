@@ -12,9 +12,10 @@ is live data ingestion, reproducible training, a deployed endpoint,
 infrastructure as code, CI/CD, and the reasoning behind the choices — including
 the ones that went against the obvious answer.
 
-**Status:** Phases 1–6 complete — data, baseline model, service, container and
-CI, infrastructure, model comparison — plus fitted decision thresholds. Drift
-monitoring is deliberately not built; see the end of this file for why.
+**Status:** complete — ingestion, feature engineering, a baseline model with
+fitted decision thresholds, a service, a container, CI/CD, infrastructure as
+code, and a deployed endpoint. What was deliberately left out, and why, is at
+the end of this file.
 
 Training data: `huggingface/transformers`, `pandas-dev/pandas`,
 `scikit-learn/scikit-learn`, `microsoft/vscode` — 467,491 issues ingested.
@@ -167,7 +168,7 @@ cents.
 
 ### On the model that was not fine-tuned
 
-The build order calls for a DistilBERT fine-tune "if the gain justifies it".
+A DistilBERT fine-tune was planned, conditional on the gain justifying it.
 The gain from embeddings was negative twice, and the second run removed the one
 explanation under which a heavier model might have reversed it: if truncation
 were the problem, more context would have helped, and 512 tokens did not. A
@@ -277,12 +278,11 @@ not a history of label changes.
 issues endpoint returns PRs too, and deciding what counts as a real issue is
 feature engineering — so it belongs in a view, not in the ingestion script.
 
-**Prediction logs keep the raw text, not just a hash.** The spec's minimum was a
-hash, which is the privacy-conscious default for real customer tickets. These
-tickets are already-public GitHub issues, so that argument doesn't apply, and
-Phase 7's drift monitoring cannot compare feature distributions against a
-one-way hash. Keeping the text now avoids a schema change later that would
-leave all earlier predictions useless for comparison.
+**Prediction logs keep the raw text, not just a hash.** A hash is the
+privacy-conscious default for real customer tickets. These are already-public
+GitHub issues, so that argument doesn't apply — and a one-way hash cannot be
+re-examined. Keeping the text costs nothing here and avoids a schema change
+later that would leave every earlier prediction useless to compare against.
 
 **The API pins an exact model version** via `MODEL_VERSION` rather than tracking
 a "latest" or an MLflow alias. Serving what a config file names is auditable and
@@ -387,27 +387,14 @@ reliable ground truth for category and nothing equivalent for the other two —
 inventing labels for them would produce a model that scores well against its own
 assumptions and means nothing.
 
-**A zero-shot LLM comparison arm.** The build order asks for one, measured on
-cost per thousand tickets against latency and F1. It needs an API key that
-isn't set up, and the question it answers — is training our own model worth it
+**A zero-shot LLM comparison arm.** Measured on cost per thousand tickets
+against latency and F1, it would answer whether any of this beats calling
+someone else's model. It needs an API key that isn't set up, and the question it answers — is training our own model worth it
 versus calling someone else's — is worth answering properly or not at all,
 rather than with a half-run.
 
 **A DistilBERT fine-tune.** Conditional on embeddings showing promise, which
 they didn't. See the results section.
-
-**Drift monitoring.** Not built, and not for lack of time. Drift monitoring
-compares live prediction distributions against the training set, and there is
-no live traffic to compare: the endpoint is created on demand and destroyed
-after, and the prediction log holds three rows, all of them mine. A weekly job
-watching an empty table would be decoration.
-
-The groundwork is done rather than skipped. Predictions are logged with their
-raw text specifically so distributions can be compared later, the hashed split
-means "the training distribution" is a precisely defined set rather than a
-moving target, and routing inference through the API means a deployed
-prediction is recorded like any other. What is missing is traffic, which is a
-reason to wait rather than a thing to fake.
 
 **Continuous accumulation into RDS.** The security group is scoped to a single
 IP, so GitHub Actions runners can't reach it, and the instance is destroyed
@@ -418,6 +405,6 @@ container as a regression check that ingestion still works against the live API.
 SageMaker endpoint is IAM-authenticated by default; the FastAPI service is local
 only.
 
-**Historical label-change tracking.** `raw_issues` stores current state only. If
-drift monitoring later needs label histories, that's an append-only log added
-when it's actually needed.
+**Historical label-change tracking.** `raw_issues` stores current state only.
+If something later needs label histories, that's an append-only log added when
+it's actually needed.

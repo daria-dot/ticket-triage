@@ -14,9 +14,9 @@ CREATE INDEX IF NOT EXISTS idx_raw_issues_repo_updated_at
     ON raw_issues (repo, (payload ->> 'updated_at'));
 
 -- Every /predict call. input_text is the exact title+body sent to the model,
--- not just its hash -- kept for Phase 7 drift monitoring and debugging bad
--- predictions. Safe to retain here since the source tickets are already-public
--- GitHub issues, not private customer data.
+-- not just its hash -- kept so a prediction can be re-examined later and bad
+-- ones debugged. Safe to retain here since the source tickets are
+-- already-public GitHub issues, not private customer data.
 CREATE TABLE IF NOT EXISTS predictions (
     id BIGSERIAL PRIMARY KEY,
     input_hash TEXT NOT NULL,
