@@ -137,6 +137,18 @@ function cuts(res) {
   return Object.fromEntries(Object.keys(res.predictions).map((k) => [k, 0.5]));
 }
 
+function nearest(res, cut) {
+  // An empty answer and a broken page look identical otherwise. Saying which
+  // category came closest, and by how much, makes "not confident enough" read
+  // as a decision rather than a failure -- and it is the honest description:
+  // the ranking can be right while the confidence is not.
+  const [name, p] = Object.entries(res.predictions).sort((a, b) => b[1] - a[1])[0];
+  const short = (cut[name] - p).toFixed(3);
+  return `<div class="delta">Closest was <b>${name}</b> at ${p.toFixed(3)},` +
+         ` short of its ${cut[name].toFixed(3)} threshold by ${short}.` +
+         ` Issues unlike the four repos this was trained on land here.</div>`;
+}
+
 function render() {
   if (!last) return;
   const res = last, cut = cuts(res);
@@ -174,7 +186,7 @@ function render() {
       <div class="verdict">
         ${fires.length
           ? fires.map((c) => `<span class="chip">${c}</span>`).join("")
-          : `<span class="chip none">no category above threshold</span>`}
+          : `<span class="chip none">no category above threshold</span>${nearest(res, cut)}`}
         ${delta}
       </div>
     </div>
