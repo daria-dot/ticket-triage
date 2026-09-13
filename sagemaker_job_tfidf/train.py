@@ -183,8 +183,15 @@ def main() -> None:
 
     print(f"macro f1 {default_macro:.3f} -> {tuned_macro:.3f}", flush=True)
 
+    import sklearn
+
     metrics: dict[str, object] = {
         "approach": "tfidf",
+        # Recorded, not assumed: the pipeline is unpickled by the API under
+        # whatever it has installed, and a mismatch should be visible here
+        # rather than inferred from which image happened to run.
+        "sklearn_version": sklearn.__version__,
+        "numpy_version": np.__version__,
         "fit_seconds": fit_seconds,
         "train_rows": int(is_train.sum()),
         "val_rows": int(is_val.sum()),

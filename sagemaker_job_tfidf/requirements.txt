@@ -1,12 +1,15 @@
-# The prebuilt SKLearn training image already provides scikit-learn, pandas,
-# numpy and joblib. Two are pinned anyway:
+# Deliberately empty of packages.
 #
-# scikit-learn -- the newest available image ships 1.2, while the API serves
-# under >=1.5. A pipeline pickled by one and unpickled by the other is at best
-# a warning and at worst a silent behaviour change, so the job installs the
-# version the artifact will actually be loaded under.
+# An earlier version pinned scikit-learn>=1.5 here so the pickled pipeline
+# would match the >=1.5 the API unpickles it under. On the scikit-learn image
+# that pulled numpy 2.x into a Python 3.9 environment whose compiled sklearn
+# extensions were built against numpy 1.x, and the job died on import:
 #
-# pyarrow -- the dataset arrives as Parquet and a missing engine would fail at
-# read time, after the instance is already billing.
-scikit-learn>=1.5
-pyarrow>=15.0
+#   RuntimeError: CPU dispatcher tracer already initlized
+#   ImportError: numpy._core.multiarray failed to import
+#
+# The pin meant to prevent a version mismatch caused a worse one. The job now
+# runs on the same PyTorch py312 image the embedding job uses -- already proven
+# in this account, and carrying a numpy and scikit-learn that agree with each
+# other. Installing nothing is what keeps them agreeing; the exact versions are
+# recorded in metrics.json rather than assumed.
