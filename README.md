@@ -13,8 +13,8 @@ infrastructure as code, CI/CD, and the reasoning behind the choices — includin
 the ones that went against the obvious answer.
 
 **Status:** Phases 1–6 complete — data, baseline model, service, container and
-CI, infrastructure, model comparison. Drift monitoring is deliberately not
-built; see the end of this file for why.
+CI, infrastructure, model comparison — plus fitted decision thresholds. Drift
+monitoring is deliberately not built; see the end of this file for why.
 
 Training data: `huggingface/transformers`, `pandas-dev/pandas`,
 `scikit-learn/scikit-learn`, `microsoft/vscode` — 467,491 issues ingested.
@@ -55,35 +55,84 @@ one served locally, and the deployed path stays observable.
 
 ## Results
 
-Both approaches scored on the identical held-out test set — 62,331 issues,
+Every number below is on the identical held-out test set — 62,331 issues,
 assigned by hashing each issue's identity rather than drawn at random, so the
 comparison is like-for-like. Per-label precision and recall stay the primary
 reading; macro F1 exists only to give the comparison a single ordering.
 
-| Category | TF-IDF F1 | Embeddings F1 |
-|---|---|---|
-| bug | **0.566** | 0.508 |
-| feature | **0.530** | 0.498 |
-| docs | **0.390** | 0.223 |
-| question | **0.165** | 0.124 |
-| duplicate | **0.294** | 0.268 |
-| **macro** | **0.389** | **0.324** |
+| Category | TF-IDF F1 | Embeddings F1 | TF-IDF, both at 0.5 | Embeddings, both at 0.5 |
+|---|---|---|---|---|
+| bug | **0.573** | 0.508 | 0.564 | 0.508 |
+| feature | **0.558** | 0.498 | 0.530 | 0.498 |
+| docs | **0.686** | 0.223 | 0.403 | 0.223 |
+| question | **0.207** | 0.124 | 0.164 | 0.124 |
+| duplicate | **0.301** | 0.268 | 0.294 | 0.268 |
+| **macro** | **0.465** | **0.324** | **0.391** | **0.324** |
 
-Baseline detail, TF-IDF with one-vs-rest logistic regression:
+**Read the last two columns for the model comparison, not the first two.** Only
+TF-IDF has had its thresholds fitted; the embedding arm is still cut at 0.5, so
+the leftmost comparison flatters TF-IDF by an improvement that has nothing to do
+with features. Embeddings lose either way here — but they lose by 0.067 on equal
+terms, not by 0.141. Re-scoring that arm properly costs a few cents of GPU time
+and has not been spent yet, which is the honest reason the columns are separate
+rather than merged.
 
-| Category | Precision | Recall | Support |
+Baseline detail, TF-IDF with one-vs-rest logistic regression at its fitted
+thresholds:
+
+| Category | Precision | Recall | Threshold | Support |
+|---|---|---|---|---|
+| bug | 0.475 | 0.721 | 0.553 | 12,148 |
+| feature | 0.467 | 0.693 | 0.647 | 7,187 |
+| docs | 0.718 | 0.657 | 0.947 | 853 |
+| question | 0.183 | 0.238 | 0.841 | 1,690 |
+| duplicate | 0.213 | 0.514 | 0.584 | 6,086 |
+
+### The threshold was doing more damage than the model
+
+The first version of these numbers came from `predict()`, which cuts every label
+at 0.5. That is a scikit-learn default, not a decision anyone made — and with
+`class_weight="balanced"` over labels running from 19.8% positive (bug) down to
+1.3% (docs), it sits nowhere near the F1-optimal point.
+
+The tell was in the shape of the results rather than their size: they ordered
+*exactly* by label rarity. That is the signature of one wrong cut applied to
+five different distributions, not of five independent modelling failures. The
+serving path never applied 0.5 at all — it returns probabilities — so the
+metrics were describing an operating point that production did not use.
+
+Fitting one threshold per label on a held-out validation split, model and
+features untouched:
+
+| Category | F1 at 0.5 | F1 fitted | |
 |---|---|---|---|
-| bug | 0.447 | 0.772 | 12,148 |
-| feature | 0.396 | 0.803 | 7,187 |
-| docs | 0.252 | 0.864 | 853 |
-| question | 0.095 | 0.631 | 1,690 |
-| duplicate | 0.189 | 0.659 | 6,086 |
+| bug | 0.564 | 0.573 | +0.009 |
+| feature | 0.530 | 0.558 | +0.028 |
+| docs | 0.403 | **0.686** | **+0.283** |
+| question | 0.164 | 0.207 | +0.043 |
+| duplicate | 0.294 | 0.301 | +0.007 |
+| **macro** | **0.391** | **0.465** | **+0.074** |
 
-Recall is strong everywhere and precision is poor everywhere, which is what
-`class_weight="balanced"` buys on a linear model: it pushes hard toward catching
-positives at the cost of false alarms. `question` is worst by a distance —
-"is this a question" is far more semantic than lexical, and TF-IDF sees only
-words.
+Carving out the validation split cost a tenth of the training data, so the
+retrained model was re-scored at 0.5 as a control: macro F1 0.391 against the
+0.389 originally published. Losing those rows changed nothing measurable, which
+is what makes the remaining gain attributable to the thresholds rather than to
+anything else moving at the same time.
+
+`docs` needed 0.947 and `question` 0.841. Those labels were not being classified
+badly; they were being asked the wrong question.
+
+**What this costs, and why it is a choice rather than a free win.** Maximising
+F1 per label is a default, and on `question` it trades recall 0.615 → 0.238 to
+buy precision 0.095 → 0.183. F1 rose; a triage system that must not drop
+questions on the floor got worse. F1-optimal is not product-optimal, and until
+somebody prices a missed ticket against a misrouted one, any choice here is
+provisional. Pinning a recall floor per label and maximising precision under it
+is the same fitting code with a different objective.
+
+Precision remains poor on `question` and `duplicate` in absolute terms.
+`question` is the hardest of the five — "is this a question" is far more
+semantic than lexical, and TF-IDF sees only words.
 
 ### Word counting beat sentence embeddings
 
@@ -250,6 +299,15 @@ There is deliberately no fallback between the backends. An unreachable endpoint
 surfaces as an error, because quietly answering from a different model than the
 caller believes they are using is worse than failing.
 
+**The split is three ways, and `val` was carved out of train rather than test.**
+Fitting a decision threshold is fitting a parameter, so it needs data the model
+has not seen — and taking that from `test` would leak, destroying the
+comparability the split exists to provide. `val` is buckets 20–29, previously
+train; `test` stays at buckets 0–19, the same 62,331 issues as before, verified
+by per-label count. Every number published before this change stays directly
+comparable to every number after it. A test asserts that property rather than
+trusting it.
+
 **The train/test split is hashed from issue identity, not drawn at random.**
 `train_test_split(random_state=...)` fixes which *positions* land in the test
 set, and a `SELECT` without `ORDER BY` promises nothing about which row sits at
@@ -279,6 +337,22 @@ rather than network position — so it gains nothing from sitting inside the VPC
 Secrets Manager. It ends up in state either way, this requires no manual
 handling, and Secrets Manager would add about $0.40/month for a database not
 meant to outlive a working session.
+
+**Training jobs run on prebuilt images, and the pin that looks safest is not.**
+The TF-IDF job first went to SageMaker's scikit-learn image with
+`scikit-learn>=1.5` pinned, so the pickled pipeline would match the version the
+API unpickles it under. That image is Python 3.9 carrying numpy 1.x; the pin
+pulled numpy 2.x in beside compiled extensions built against 1.x, and the job
+died at import with `numpy._core.multiarray failed to import` before reading a
+row. A pin intended to prevent a version mismatch produced a worse one.
+
+It now runs on the PyTorch py312 image the embedding job already proved out,
+installing nothing, because the value of a prebuilt image is that its pinned
+world agrees with itself. The instance type selects the CPU build, so a job with
+no tensors in it still gets no GPU. Both library versions are recorded in
+`metrics.json` rather than inferred from which image happened to run — which is
+how the remaining 1.8.0-against-1.9.1 gap between training and serving is
+visible at all.
 
 **Postgres runs with `statement_timeout` and `temp_file_limit` set.** An
 unbounded aggregation query once spilled temp files until the host disk hit
