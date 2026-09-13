@@ -15,7 +15,9 @@ import json
 from functools import lru_cache
 
 import boto3
+import mlflow
 import mlflow.sklearn
+from mlflow.tracking import MlflowClient
 from sklearn.pipeline import Pipeline
 
 from triage.config import get_settings
@@ -30,6 +32,53 @@ def _local_model() -> Pipeline:
     settings = get_settings()
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     return mlflow.sklearn.load_model(f"models:/{REGISTERED_MODEL_NAME}/{settings.model_version}")
+
+
+@lru_cache
+def thresholds() -> dict[str, float]:
+    """The decision thresholds fitted for the pinned model version.
+
+    Read from the registry rather than configured here, because a threshold is
+    only meaningful against the probability distribution it was fitted on --
+    pairing one model's cut with another's scores is silently wrong in a way no
+    error would reveal. Tying them to the version means MODEL_VERSION alone
+    describes what the API is doing.
+
+    Raises if the version has none. A default of 0.5 is exactly the bug this
+    replaced, and falling back to it would reintroduce it invisibly.
+    """
+    settings = get_settings()
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+
+    version = MlflowClient().get_model_version(REGISTERED_MODEL_NAME, settings.model_version)
+    try:
+        path = mlflow.artifacts.download_artifacts(
+            run_id=version.run_id, artifact_path="thresholds.json"
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            f"{REGISTERED_MODEL_NAME} version {settings.model_version} has no fitted "
+            "thresholds. Serve a version registered with them rather than assuming 0.5."
+        ) from exc
+
+    with open(path) as handle:
+        loaded: dict[str, float] = json.load(handle)
+
+    missing = set(CATEGORIES) - set(loaded)
+    if missing:
+        raise RuntimeError(f"thresholds are missing categories: {sorted(missing)}")
+    return loaded
+
+
+def decide(probabilities: dict[str, float]) -> list[str]:
+    """Categories whose probability clears their own threshold.
+
+    Applied here rather than in either backend so the decision is identical
+    whether the model ran in this process or in SageMaker -- the same reason
+    logging lives in the API.
+    """
+    cuts = thresholds()
+    return [category for category in CATEGORIES if probabilities[category] >= cuts[category]]
 
 
 @lru_cache

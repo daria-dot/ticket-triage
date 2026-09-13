@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import create_engine, text
 
-from triage.api.inference import predict_probabilities
+from triage.api.inference import decide, predict_probabilities, thresholds
 from triage.api.predictions_db import log_prediction
 from triage.api.schemas import PredictRequest, PredictResponse
 from triage.config import get_settings
@@ -64,6 +64,10 @@ def predict(request: PredictRequest) -> PredictResponse:
     predictions = predict_probabilities(request.title, request.body)
     latency_ms = (time.perf_counter() - start) * 1000
 
+    # Probabilities are logged, not the decision. The thresholds belong to the
+    # model version, which is logged beside them, so any past decision can be
+    # reconstructed exactly -- while a logged decision could not be reinterpreted
+    # if the operating point ever moves.
     log_prediction(
         engine,
         input_hash=input_hash,
@@ -75,6 +79,8 @@ def predict(request: PredictRequest) -> PredictResponse:
 
     return PredictResponse(
         predictions=predictions,
+        categories=decide(predictions),
+        thresholds=thresholds(),
         model_version=settings.model_version,
         latency_ms=latency_ms,
     )
