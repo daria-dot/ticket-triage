@@ -300,9 +300,16 @@ showed the real claim; the policy now accepts both forms.
 **The API logs predictions, the endpoint does not.** Giving the model server a
 database would put application concerns inside the thing whose only job is
 turning text into numbers, so inference is routed through the API instead and
-the log covers both paths identically. Verified against a live endpoint: a
-prediction served from AWS took 398ms against roughly 8ms in-process — the
-round trip — and landed in Postgres with its input text intact.
+the log covers both paths identically. Verified against a live endpoint twice,
+most recently serving the same model as the local path: the first call after
+the endpoint came up took 219ms and warm calls settled at 27-50ms, against 3-8ms
+in-process. Both landed in Postgres with their input text intact, in rows
+distinguishable only by latency.
+
+An earlier version of this file quoted 398ms from a single measurement. That
+figure was a cold start being reported as though it were typical, which is the
+kind of number that looks like evidence and is not; the range above is seven
+calls, and the cold one is labelled.
 
 There is deliberately no fallback between the backends. An unreachable endpoint
 surfaces as an error, because quietly answering from a different model than the
