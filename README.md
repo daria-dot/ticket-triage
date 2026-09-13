@@ -60,33 +60,18 @@ assigned by hashing each issue's identity rather than drawn at random, so the
 comparison is like-for-like. Per-label precision and recall stay the primary
 reading; macro F1 exists only to give the comparison a single ordering.
 
-| Category | TF-IDF F1 | Embeddings F1 | TF-IDF, both at 0.5 | Embeddings, both at 0.5 |
-|---|---|---|---|---|
-| bug | **0.573** | 0.508 | 0.564 | 0.508 |
-| feature | **0.558** | 0.498 | 0.530 | 0.498 |
-| docs | **0.686** | 0.223 | 0.403 | 0.223 |
-| question | **0.207** | 0.124 | 0.164 | 0.124 |
-| duplicate | **0.301** | 0.268 | 0.294 | 0.268 |
-| **macro** | **0.465** | **0.324** | **0.391** | **0.324** |
+| Category | TF-IDF | bge-small-en-v1.5 |
+|---|---|---|
+| bug | **0.573** | 0.511 |
+| feature | **0.558** | 0.541 |
+| docs | **0.686** | 0.591 |
+| question | **0.207** | 0.180 |
+| duplicate | **0.301** | 0.281 |
+| **macro** | **0.465** | **0.421** |
 
-**Read the last two columns for the model comparison, not the first two.** Only
-TF-IDF has had its thresholds fitted; the embedding arm is still cut at 0.5, so
-the leftmost comparison flatters TF-IDF by an improvement that has nothing to do
-with features. Embeddings lose either way here — but they lose by 0.067 on equal
-terms, not by 0.141. Re-scoring that arm properly costs a few cents of GPU time
-and has not been spent yet, which is the honest reason the columns are separate
-rather than merged.
-
-Baseline detail, TF-IDF with one-vs-rest logistic regression at its fitted
-thresholds:
-
-| Category | Precision | Recall | Threshold | Support |
-|---|---|---|---|---|
-| bug | 0.475 | 0.721 | 0.553 | 12,148 |
-| feature | 0.467 | 0.693 | 0.647 | 7,187 |
-| docs | 0.718 | 0.657 | 0.947 | 853 |
-| question | 0.183 | 0.238 | 0.841 | 1,690 |
-| duplicate | 0.213 | 0.514 | 0.584 | 6,086 |
+Both arms fit one threshold per label on the same validation split under the
+same rule, so the comparison is of approaches rather than of operating points.
+Counting words wins on every label.
 
 ### The threshold was doing more damage than the model
 
@@ -134,37 +119,61 @@ Precision remains poor on `question` and `duplicate` in absolute terms.
 `question` is the hardest of the five — "is this a question" is far more
 semantic than lexical, and TF-IDF sees only words.
 
-### Word counting beat sentence embeddings
+### Word counting beat sentence embeddings, and not because of truncation
 
-Swapping TF-IDF for `all-MiniLM-L6-v2` embeddings, holding the classifier,
-hyperparameters and test split fixed, made every single label worse. Four
-plausible causes, roughly in order of suspected weight:
+Two encoders have now been tried against the same classifier, hyperparameters,
+split and threshold rule. Both lose, and the second one is what makes the
+result interesting.
 
-- **Truncation.** MiniLM stops at 256 tokens; the average issue is nearer 440
-  tokens' worth, and the 95th percentile far beyond. TF-IDF reads the whole
-  document.
-- **The task is more lexical than semantic.** "feature request", stack traces
-  and "duplicate of #123" are literal string signals, which 20,000 TF-IDF
-  features and bigrams capture directly.
-- **Compression.** 384 dimensions against 20,000 features discards a lot where
-  surface form carries the signal.
-- **Domain.** MiniLM is trained on general web text, not developer writing.
+| Approach | Context | Dims | Macro F1 at 0.5 |
+|---|---|---|---|
+| TF-IDF, 20k features + bigrams | whole document | 20,000 | **0.391** |
+| `all-MiniLM-L6-v2` | 256 tokens | 384 | 0.324 |
+| `bge-small-en-v1.5` | 512 tokens | 384 | 0.328 |
 
-The honest caveat: this rests on one comparatively weak encoder. A stronger,
-longer-context model (`bge-base-en-v1.5` at 512 tokens) was started and stopped
-on cost grounds before producing a number, so "embeddings lose" is better read
-as "the cheap embedding approach loses" than as a settled fact.
+The first version of this section named truncation as the leading suspect:
+MiniLM stops at 256 tokens where the average issue runs nearer 440, while
+TF-IDF reads everything. It was a good hypothesis and it is wrong. Doubling the
+context window to 512 tokens, on a newer and stronger encoder, moved macro F1
+by **0.004** — noise. Whatever MiniLM was cutting off, the classifier was not
+going to use it.
 
-It is still a useful result. The point of building a documented baseline first
-was to make this claim measurable instead of assumed, and the measurement says
-the extra machinery did not earn its place.
+What survives:
+
+- **The task is more lexical than semantic.** "feature request", stack traces,
+  `duplicate of #123`, `DOC:` and `QST:` title prefixes are literal strings. A
+  bigram index over 20,000 features matches them directly; an embedding of the
+  whole document dilutes them into a summary of what the issue is *about*,
+  which is a different question from how it should be *routed*.
+- **Compression.** 384 dimensions against 20,000 features discards a lot when
+  surface form carries the signal. Both encoders output 384 dimensions, so this
+  one is untested rather than confirmed — it is the remaining candidate.
+- **Domain.** Both models are trained on general web text, not developer
+  writing. Also untested.
+
+What no longer survives is the caveat this section used to carry. "Embeddings
+lose" rested on a single weak encoder until a stronger, longer-context one
+reproduced the result almost exactly. Two independent encoders agreeing, 0.004
+apart, is a finding rather than a suspicion.
+
+One honest wrinkle: the MiniLM number predates the validation split, so it was
+trained on 251,146 rows against bge-small's 219,701. That gap is worth about
+0.002 on TF-IDF, which was measured directly — far smaller than the difference
+being claimed, but it is not nothing and the two encoder numbers are not quite
+like-for-like.
+
+The cost of knowing this was 878 billable seconds of spot GPU, roughly twenty
+cents.
 
 ### On the model that was not fine-tuned
 
 The build order calls for a DistilBERT fine-tune "if the gain justifies it".
-The gain from embeddings was negative, and a heavier transformer over the same
-truncated inputs has no obvious reason to reverse that, so it was not attempted.
-That is the criterion doing its job rather than a step skipped.
+The gain from embeddings was negative twice, and the second run removed the one
+explanation under which a heavier model might have reversed it: if truncation
+were the problem, more context would have helped, and 512 tokens did not. A
+fine-tune would be a third pass at a representation the evidence says is the
+wrong one for this task. That is the criterion doing its job rather than a step
+skipped.
 
 ## Local setup
 
