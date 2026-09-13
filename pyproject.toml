@@ -42,6 +42,12 @@ dev = [
     "pre-commit>=4.0",
 ]
 
+[tool.setuptools.package-data]
+# The page is data, not code, so an editable install finds it but a built
+# wheel would not ship it without this -- and the container installs the
+# package rather than mounting the tree.
+"triage.api" = ["static/*.html"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

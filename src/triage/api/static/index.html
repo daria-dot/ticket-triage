@@ -1,0 +1,213 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket Triage</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a21; --line: #242a34;
+    --text: #e6e9ef; --dim: #8b94a3; --accent: #5eead4;
+    --fire: #34d399; --idle: #3f4654; --cut: #f472b6;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    padding: 32px 24px 64px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); font-size: 13px; margin: 0 0 24px; }
+  .badges { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .badge {
+    font: 11px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; color: var(--dim);
+  }
+  .badge b { color: var(--text); font-weight: 600; }
+  .badge.live { border-color: var(--accent); color: var(--accent); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+  input, textarea {
+    width: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 inherit;
+    border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; margin-bottom: 14px;
+  }
+  textarea { font-family: var(--mono); font-size: 13px; resize: vertical; min-height: 90px; }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button {
+    background: var(--accent); color: #06231f; border: 0; border-radius: 7px;
+    padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .ex { background: transparent; color: var(--dim); border: 1px solid var(--line); font-weight: 400; padding: 7px 11px; font-size: 12px; }
+  .ex:hover { color: var(--text); border-color: var(--dim); }
+  .mode { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; margin-left: auto; }
+  .mode button { background: transparent; color: var(--dim); border-radius: 0; font-size: 12px; padding: 8px 13px; font-weight: 500; }
+  .mode button[aria-pressed="true"] { background: var(--line); color: var(--text); }
+  #out { margin-top: 24px; }
+  .bars { display: grid; gap: 3px; }
+  .bar { display: grid; grid-template-columns: 92px 1fr 62px; align-items: center; gap: 14px; padding: 16px 0 7px; }
+  .name { font: 13px var(--mono); color: var(--dim); }
+  .bar.fires .name { color: var(--text); font-weight: 600; }
+  .track { position: relative; height: 26px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; }
+  .fill { position: absolute; inset: 0 auto 0 0; max-width: 100%; background: var(--idle); border-radius: 4px 0 0 4px; transition: width .45s cubic-bezier(.4,0,.2,1), background .3s; }
+  .bar.fires .fill { background: var(--fire); }
+  .cut { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--cut); transition: left .45s cubic-bezier(.4,0,.2,1); }
+  .cut::after {
+    content: attr(data-v); position: absolute; top: -17px; left: 50%; transform: translateX(-50%);
+    font: 10px var(--mono); color: var(--cut); white-space: nowrap;
+  }
+  .val { font: 13px var(--mono); color: var(--dim); text-align: right; }
+  .bar.fires .val { color: var(--fire); }
+  .verdict { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; }
+  .chip { display: inline-block; font: 12px var(--mono); background: var(--fire); color: #06231f; padding: 3px 9px; border-radius: 5px; margin-right: 6px; font-weight: 600; }
+  .chip.none { background: var(--line); color: var(--dim); }
+  .delta { margin-top: 12px; font-size: 13px; color: var(--dim); }
+  .delta b { color: var(--cut); }
+  .err { color: #fca5a5; font: 13px var(--mono); white-space: pre-wrap; }
+  .foot { margin-top: 20px; font-size: 12px; color: var(--dim); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Ticket Triage</h1>
+    <div class="badges">
+      <span class="badge" id="b-model">model —</span>
+      <span class="badge" id="b-backend">backend —</span>
+      <span class="badge" id="b-latency">— ms</span>
+    </div>
+  </header>
+  <p class="sub">Multi-label classification of GitHub issues, one fitted decision threshold per category.</p>
+
+  <div class="panel">
+    <label for="title">Title</label>
+    <input id="title" value="Update the docs for the new install flow">
+    <label for="body">Body</label>
+    <textarea id="body">The README still shows the old pip command and the quickstart section is out of date. Documentation needs updating.</textarea>
+    <div class="row">
+      <button id="go">Classify</button>
+      <button class="ex" data-ex="bug">bug</button>
+      <button class="ex" data-ex="feature">feature</button>
+      <button class="ex" data-ex="question">question</button>
+      <div class="mode">
+        <button id="m-fitted" aria-pressed="true">fitted thresholds</button>
+        <button id="m-half" aria-pressed="false">single 0.5 cut</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<script>
+const EXAMPLES = {
+  bug: ["App crashes on startup with NullPointerException",
+        "Stack trace attached. Reproducible on every launch since 2.1.0."],
+  feature: ["Add dark mode support",
+            "It would be great if the editor supported a dark theme."],
+  question: ["How do I configure the cache directory?",
+             "I couldn't find this in the docs. Is there an environment variable for it?"],
+};
+
+let last = null;          // most recent API response
+let mode = "fitted";      // "fitted" | "half"
+
+const $ = (id) => document.getElementById(id);
+
+function cuts(res) {
+  if (mode === "fitted") return res.thresholds;
+  return Object.fromEntries(Object.keys(res.predictions).map((k) => [k, 0.5]));
+}
+
+function render() {
+  if (!last) return;
+  const res = last, cut = cuts(res);
+  const fires = Object.keys(res.predictions).filter((k) => res.predictions[k] >= cut[k]);
+
+  const bars = Object.entries(res.predictions).map(([name, p]) => `
+    <div class="bar ${p >= cut[name] ? "fires" : ""}">
+      <div class="name">${name}</div>
+      <div class="track">
+        <div class="fill" style="width:${(p * 100).toFixed(1)}%"></div>
+        <div class="cut" style="left:${(cut[name] * 100).toFixed(1)}%" data-v="${cut[name].toFixed(2)}"></div>
+      </div>
+      <div class="val">${p.toFixed(3)}</div>
+    </div>`).join("");
+
+  // What the other operating point would have decided, on these same numbers.
+  const other = mode === "fitted"
+    ? Object.keys(res.predictions).filter((k) => res.predictions[k] >= 0.5)
+    : Object.keys(res.predictions).filter((k) => res.predictions[k] >= res.thresholds[k]);
+  const added = other.filter((k) => !fires.includes(k));
+  const dropped = fires.filter((k) => !other.includes(k));
+
+  let delta = "";
+  if (added.length || dropped.length) {
+    const label = mode === "fitted" ? "A single 0.5 cut" : "The fitted thresholds";
+    const parts = [];
+    if (added.length) parts.push(`also return <b>${added.join(", ")}</b>`);
+    if (dropped.length) parts.push(`drop <b>${dropped.join(", ")}</b>`);
+    delta = `<div class="delta">${label} would ${parts.join(" and ")}.</div>`;
+  }
+
+  $("out").innerHTML = `
+    <div class="panel">
+      <div class="bars">${bars}</div>
+      <div class="verdict">
+        ${fires.length
+          ? fires.map((c) => `<span class="chip">${c}</span>`).join("")
+          : `<span class="chip none">no category above threshold</span>`}
+        ${delta}
+      </div>
+    </div>
+    <div class="foot">Pink line is each category's decision threshold. Probabilities come from the model; the cut is what this deployment decided.</div>`;
+}
+
+async function classify() {
+  $("go").disabled = true;
+  try {
+    const r = await fetch("/predict", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: $("title").value, body: $("body").value }),
+    });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}\n${await r.text()}`);
+    last = await r.json();
+    $("b-model").innerHTML = `model <b>v${last.model_version}</b>`;
+    $("b-latency").innerHTML = `<b>${last.latency_ms.toFixed(1)}</b> ms`;
+    render();
+  } catch (e) {
+    // Surfaced, not swallowed -- an unreachable endpoint should look like one.
+    $("out").innerHTML = `<div class="panel err">${e.message}</div>`;
+  } finally {
+    $("go").disabled = false;
+  }
+}
+
+function setMode(next) {
+  mode = next;
+  $("m-fitted").setAttribute("aria-pressed", String(next === "fitted"));
+  $("m-half").setAttribute("aria-pressed", String(next === "half"));
+  render();
+}
+
+$("go").onclick = classify;
+$("m-fitted").onclick = () => setMode("fitted");
+$("m-half").onclick = () => setMode("half");
+document.querySelectorAll(".ex").forEach((b) => {
+  b.onclick = () => {
+    const [t, body] = EXAMPLES[b.dataset.ex];
+    $("title").value = t; $("body").value = body;
+    classify();
+  };
+});
+
+fetch("/health").then((r) => r.json()).then((h) => {
+  $("b-backend").innerHTML = `backend <b>${h.inference_backend}</b>`;
+  $("b-backend").classList.toggle("live", h.inference_backend === "sagemaker");
+  $("b-model").innerHTML = `model <b>v${h.model_version}</b>`;
+});
+
+classify();
+</script>
