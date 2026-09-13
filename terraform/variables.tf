@@ -46,9 +46,9 @@ variable "api_image_tag" {
 }
 
 variable "model_artifact_key" {
-  description = "Key of model.tar.gz within the artifacts bucket."
+  description = "Key of model.tar.gz within the artifacts bucket. Bump deliberately to promote a model, the way MODEL_VERSION does for the API."
   type        = string
-  default     = "models/baseline/model.tar.gz"
+  default     = "models/v3/model.tar.gz"
 }
 
 variable "create_rds" {
