@@ -45,6 +45,3 @@ mlflow.db
 Thumbs.db
 .vscode/settings.json
 .idea/
-
-# Working instructions for Claude Code, kept local rather than published
-CLAUDE.md
